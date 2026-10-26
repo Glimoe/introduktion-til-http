@@ -67,16 +67,44 @@ I browserens DevTools (Network-fanen) kunne jeg se det samme skel: en "resource 
 **Hvorfor er det relevant for cybersikkerhed?**
 `Content-Length` er en værdi, serveren selv påstår er korrekt – en klient (eller en mellemliggende proxy) er nødt til at stole på den. Hvis denne værdi er forkert eller manipuleret, kan det bruges til angreb som request/response smuggling, hvor to parter er uenige om, hvor et HTTP-svar egentlig slutter.
 
+## Opgave 4 – Python HTTP-klient med socket
+
+Opgaven bad mig skrive et lille program i Python, der sender en HTTP GET-forespørgsel til `localhost:8000/index.html` og viser svaret til brugeren. Fra min TCP-klient i Netværks-lag kunne jeg genkende delen med `socket.socket` – det nye var, at jeg nu selv skulle forme en rigtig HTTP-request i stedet for bare at sende tekst.
+
+Forskellen på at bruge `curl` og selv at skrive klienten er, at jeg nu selv bestemmer hver del af requesten. Det betyder også, at jeg kan sende forespørgsler, som et almindeligt værktøj eller en browser ikke ville sende.
+
+Requesten skal slutte med en tom linje (`\r\n\r\n`), ellers bliver serveren ved med at vente på resten. Netop den mekanisme udnyttes i Slowloris-angreb, hvor man åbner mange forbindelser og aldrig afslutter dem, så serveren løber tør for pladser til rigtige brugere.
+
+Jeg skulle `encode()` før afsendelse, fordi socket'en arbejder med bytes, og `decode()` svaret, fordi jeg ville have det som læsbar tekst. Huskereglen: encode når du sender, decode når du modtager. Svaret hentede jeg med `recv()` i en løkke, fordi et HTTP-svar kan komme i flere bidder – løkken samler dem, indtil serveren lukker forbindelsen.
+
+**Hvorfor er det relevant for cybersikkerhed?**
+Når man selv kan forme hver byte i en request, kan man teste en server med forespørgsler, en browser aldrig ville sende – forkerte headers, mærkelige stier eller ufuldstændige requests. Det er netop den slags kontrol, der bruges til at finde fejl og sårbarheder, og det hænger sammen med min pointe fra øvelse 4 om, at en server kan være for tilgivende.
+
+## Opgave 5 – Python HTTP-server med socket
+
+Opgaven bad mig skrive et lille program i Python, der svarer på en HTTP GET-forespørgsel. I modsætning til Opgave 4, hvor jeg sendte en request, skal serveren nu modtage en request og selv sende et svar tilbage. Jeg genbrugte `bind`, `listen`, `accept` og `recv` fra min TCP-server i Netværks-lag – det nye var at forme et korrekt HTTP-svar.
+
+Et HTTP-svar skal indeholde en statuslinje (fx `HTTP/1.1 200 OK`), nogle headers der beskriver svaret, en tom linje, og til sidst selve body'en. Den tomme linje er afgørende: den fortæller klienten, hvor headerne slutter, og indholdet begynder.
+
+Jeg brugte `len(body.encode())` til `Content-Length` og ikke bare tekstens længde, fordi værdien skal være antal bytes, ikke antal tegn. Jeg bandt serveren til `127.0.0.1` og ikke `0.0.0.0`, fordi den så kun kan nås lokalt – det minimerer angrebsfladen.
+
+Undervejs fik jeg fejlen "Address already in use". Det viste sig at være min egen fejl: jeg havde byttet om på mine SSH-faner og havde stadig `python3 -m http.server` kørende på port 8000. Jeg fandt processen med `ss -tlnp | grep 8000` (kørt som root, fordi `ss` ikke er blandt de sudo-kommandoer, admin har adgang til efter Linux 101), stoppede den gamle server, og så kunne min egen binde til porten.
+
+**Hvorfor er det relevant for cybersikkerhed?**
+Når jeg selv bygger serveren, bestemmer jeg hele svaret, inklusive `Content-Length`, som klienten bare stoler på. Det gjorde det konkret for mig, hvordan en server kan lyve om sit svar, og hvorfor forkerte længder kan udnyttes til angreb som request smuggling. Min server er også bevidst "for tilgivende": den svarer ens på alle stier og alle requests, også ugyldige. En rigtig server bør skelne, og den slags for tillidsfulde servere er netop dem, der er lette at misbruge.
+
 ## Status
 
 - Øvelse 1-4: Udført
 - Opgave 1: Udført
 - Opgave 2: Udført (Host-header-kravet blev dækket i forbindelse med Øvelse 4)
 - Opgave 3: Udført
-- Opgave 4-5 (Python-programmer): Ikke påbegyndt endnu
+- Opgave 4: Udført (Python HTTP-klient med socket)
+- Opgave 5: Udført (Python HTTP-server med socket)
 - Opgave 6 (valgfri parøvelse): Ikke udført
 
 ## Filer i dette repo
 
 - `index.html` – testsiden, som serveren leverer
-- `ovelse4-ovelse5/` – mappe til de to kommende Python-programmer (HTTP-klient og HTTP-server med `socket`)
+- `ovelse4-ovelse5/http_klient.py` – HTTP-klient, der sender en GET-request
+- `ovelse4-ovelse5/http_server.py` – HTTP-server, der svarer på GET-requests
